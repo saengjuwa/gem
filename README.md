@@ -65,6 +65,15 @@ Expected local paths after preparing data are:
 - `datasets/data/triplets.json`
 - `datasets/data/validation/`
 
+The Windows app remembers the dataset root used in `Prepare datasets`. Train,
+predict, embedding DB, and hard-negative menus then use that root as the default
+path, while still allowing manual edits in every prompt. The current root is
+shown at the top of the menu.
+
+If the data was prepared outside the app, open `Prepare datasets`, enter that
+same root, answer `n` to both download questions, and the app will store that
+root for later menus.
+
 If `train_10gb_labels.csv` was created in Colab and contains paths such as
 `/content/gldv2/train_10gb/...`, the loader maps them back to the local
 `train_10gb/` folder when `--image-root .` is used.

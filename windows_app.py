@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PYTHON = sys.executable
+CONFIG_PATH = ROOT / ".windows_app_config.json"
+
+
+def load_config() -> dict[str, str]:
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with CONFIG_PATH.open(encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {str(key): str(value) for key, value in payload.items()}
+
+
+def save_config(config: dict[str, str]) -> None:
+    with CONFIG_PATH.open("w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
+def default_dataset_root() -> str:
+    return load_config().get("dataset_root", "datasets")
+
+
+def dataset_path(*parts: str) -> str:
+    return str(Path(default_dataset_root()).joinpath(*parts))
 
 
 def ask_text(label: str, default: str = "") -> str:
@@ -60,7 +88,7 @@ def ask_yes_no(label: str, default: bool) -> bool:
         print("Enter y or n.")
 
 
-def run_command(args: list[str]) -> None:
+def run_command(args: list[str]) -> bool:
     print("\nCommand:")
     print(subprocess.list2cmdline(args))
     print()
@@ -68,7 +96,10 @@ def run_command(args: list[str]) -> None:
         subprocess.run(args, cwd=ROOT, check=True)
     except subprocess.CalledProcessError as exc:
         print(f"\nCommand failed with exit code {exc.returncode}.")
+        input("\nPress Enter to return to the menu.")
+        return False
     input("\nPress Enter to return to the menu.")
+    return True
 
 
 def script_path(name: str) -> str:
@@ -76,9 +107,11 @@ def script_path(name: str) -> str:
 
 
 def print_training_path_examples() -> None:
+    active_root = default_dataset_root()
     print("Path examples:")
-    print("  Label CSV: datasets\\gldv2\\train_10gb_labels.csv")
-    print("    Use this after Prepare datasets with the default dataset root.")
+    print(f"  Active dataset root: {active_root}")
+    print(f"  Label CSV: {dataset_path('gldv2', 'train_10gb_labels.csv')}")
+    print(f"  Image root: {dataset_path('gldv2')}")
     print("  Label CSV: train_10gb_labels.csv")
     print("  Image root: .")
     print("    Use . when the CSV already contains absolute image paths.")
@@ -88,12 +121,12 @@ def print_training_path_examples() -> None:
 
 
 def print_validation_path_examples() -> None:
+    active_root = default_dataset_root()
     print("Path examples:")
-    print("  Triplets: datasets\\data\\triplets.json")
-    print("    Use this after Prepare datasets with the default dataset root.")
+    print(f"  Active dataset root: {active_root}")
+    print(f"  Triplets: {dataset_path('data', 'triplets.json')}")
+    print(f"  Validation image root: {dataset_path('data', 'validation')}")
     print("  Triplets: triplets.json")
-    print("  Validation image root: datasets\\data\\validation")
-    print("    Use this after Prepare datasets with the default dataset root.")
     print("  Validation image root: data\\validation")
     print("    Use this if images are in data\\validation\\00076\\...")
     print("  Validation image root: D:\\datasets\\validation")
@@ -114,7 +147,7 @@ def prepare_data() -> None:
     print("Examples:")
     print("  Dataset root: datasets")
     print("  Dataset root: D:\\datasets\\triplet")
-    dataset_root = ask_text("Dataset root", "datasets")
+    dataset_root = ask_text("Dataset root", default_dataset_root())
     seed = ask_int("GLDv2 train part seed", 420)
     train_parts = ask_int("Train TAR parts, 5 is about 5GB", 5)
     download_train = ask_yes_no("Download/process GLDv2 training data", True)
@@ -137,14 +170,21 @@ def prepare_data() -> None:
         args.append("--skip-score")
     if keep_tars:
         args.append("--keep-tars")
-    run_command(args)
+    if run_command(args):
+        config = load_config()
+        config["dataset_root"] = dataset_root
+        save_config(config)
+        print(f"Saved default dataset root: {dataset_root}")
 
 
 def train() -> None:
     print("\nTrain")
     print_training_path_examples()
-    csv_path = ask_text("Label CSV, example datasets\\gldv2\\train_10gb_labels.csv", "datasets\\gldv2\\train_10gb_labels.csv")
-    image_root = ask_text("Image root, example . or D:\\datasets\\gldv2", ".")
+    csv_path = ask_text(
+        "Label CSV",
+        dataset_path("gldv2", "train_10gb_labels.csv"),
+    )
+    image_root = ask_text("Image root", dataset_path("gldv2"))
     model_name = ask_text("Model name", "resnet50")
     pretrained = ask_yes_no("Use pretrained weights", True)
     use_projection = ask_yes_no("Use projection head", False)
@@ -220,8 +260,8 @@ def predict() -> None:
     print("\nPredict triplets from a checkpoint")
     print_validation_path_examples()
     checkpoint = ask_text("Checkpoint, example checkpoints\\resnet50_epoch1.pt", "checkpoints\\resnet50_windows.pt")
-    triplets = ask_text("Triplets JSON/CSV, example datasets\\data\\triplets.json", "datasets\\data\\triplets.json")
-    image_root = ask_text("Validation image root, example datasets\\data\\validation", "datasets\\data\\validation")
+    triplets = ask_text("Triplets JSON/CSV", dataset_path("data", "triplets.json"))
+    image_root = ask_text("Validation image root", dataset_path("data", "validation"))
     tta = ask_text("TTA: none, flip, or five_crop", "flip")
     batch_size = ask_int("Batch size", 64)
     output = ask_text("Output score CSV", "outputs\\triplet_scores.csv")
@@ -258,8 +298,8 @@ def build_embedding_db() -> None:
     print("\nBuild embedding DB")
     print_validation_path_examples()
     checkpoint = ask_text("Checkpoint, example checkpoints\\resnet50_epoch1.pt", "checkpoints\\resnet50_windows.pt")
-    triplets = ask_text("Triplets JSON/CSV, example datasets\\data\\triplets.json", "datasets\\data\\triplets.json")
-    image_root = ask_text("Validation image root, example datasets\\data\\validation", "datasets\\data\\validation")
+    triplets = ask_text("Triplets JSON/CSV", dataset_path("data", "triplets.json"))
+    image_root = ask_text("Validation image root", dataset_path("data", "validation"))
     tta = ask_text("TTA: none, flip, or five_crop", "flip")
     batch_size = ask_int("Batch size", 64)
     output = ask_text("Output DB", "embedding_db\\validation_flip.pt")
@@ -289,8 +329,8 @@ def predict_from_db() -> None:
     print_validation_path_examples()
     print("  Embedding DB: embedding_db\\validation_flip.pt")
     embedding_db = ask_text("Embedding DB, example embedding_db\\validation_flip.pt", "embedding_db\\validation_flip.pt")
-    triplets = ask_text("Triplets JSON/CSV, example datasets\\data\\triplets.json", "datasets\\data\\triplets.json")
-    image_root = ask_text("Validation image root, example datasets\\data\\validation", "datasets\\data\\validation")
+    triplets = ask_text("Triplets JSON/CSV", dataset_path("data", "triplets.json"))
+    image_root = ask_text("Validation image root", dataset_path("data", "validation"))
     output = ask_text("Output score CSV, example outputs\\db_scores.csv", "outputs\\db_scores.csv")
 
     run_command(
@@ -313,8 +353,11 @@ def mine_hard_negatives() -> None:
     print("\nMine hard negatives from GLDv2 train images")
     print_training_path_examples()
     checkpoint = ask_text("Checkpoint, example checkpoints\\resnet50_epoch1.pt", "checkpoints\\resnet50_windows.pt")
-    csv_path = ask_text("Label CSV, example datasets\\gldv2\\train_10gb_labels.csv", "datasets\\gldv2\\train_10gb_labels.csv")
-    image_root = ask_text("Image root, example . or D:\\datasets\\gldv2", ".")
+    csv_path = ask_text(
+        "Label CSV",
+        dataset_path("gldv2", "train_10gb_labels.csv"),
+    )
+    image_root = ask_text("Image root", dataset_path("gldv2"))
     top_k = ask_int("Top K negatives per anchor", 5)
     limit = ask_text("Limit rows, empty for all", "")
     output = ask_text("Output CSV", "outputs\\hard_negatives.csv")
@@ -340,6 +383,7 @@ def mine_hard_negatives() -> None:
 
 def print_menu() -> None:
     print("\nTriplet Landmark Windows Terminal")
+    print(f"Dataset root: {default_dataset_root()}")
     print("1. Install requirements")
     print("2. Prepare datasets")
     print("3. Train")
