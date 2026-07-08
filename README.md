@@ -57,13 +57,13 @@ run_windows.bat
 ```
 
 The menu can install requirements, train, predict triplets, evaluate accuracy,
-build an embedding DB, predict from a DB, and mine hard negatives. Expected local
-paths are:
+prepare datasets, build an embedding DB, predict from a DB, and mine hard negatives.
+Expected local paths after preparing data are:
 
-- `train_10gb_labels.csv`
-- `train_10gb/`
-- `triplets.json`
-- `data/validation/`
+- `datasets/gldv2/train_10gb_labels.csv`
+- `datasets/gldv2/train_10gb/`
+- `datasets/data/triplets.json`
+- `datasets/data/validation/`
 
 If `train_10gb_labels.csv` was created in Colab and contains paths such as
 `/content/gldv2/train_10gb/...`, the loader maps them back to the local
@@ -79,6 +79,45 @@ Path examples shown in the Windows app:
 - Prediction `Validation image root`: use `D:\datasets\validation` when images
   are in `D:\datasets\validation\00076\...`.
 - Checkpoint: use a `.pt` file such as `checkpoints\resnet50_epoch1.pt`.
+
+## Prepare Data
+
+The data preparation script downloads both datasets into a user-selected root.
+With `--root /content`, it creates the same Colab paths used earlier:
+
+- `/content/gldv2/train_10gb/`
+- `/content/gldv2/train_10gb_labels.csv`
+- `/content/data/validation/`
+- `/content/data/triplets.json`
+
+Colab:
+
+```bash
+pip install -q -r requirements.txt
+apt-get -qq install aria2
+python scripts/prepare_data.py --root /content --seed 420 --train-parts 5
+```
+
+Windows:
+
+```powershell
+python scripts/prepare_data.py --root D:\datasets\triplet --seed 420 --train-parts 5
+```
+
+`--train-parts 5` downloads five GLDv2 train TAR parts, about 5GB before
+extraction. The seed controls which parts are selected. The script then removes
+South Korea and North Korea landmarks from the GLDv2 training images and writes
+`gldv2/train_10gb_labels.csv`.
+
+The scoring data is downloaded with `gdown` from file id
+`1-Rt925IS1U-tDfdfOJhB0z3muIyS6gVn` and extracted as `data/`.
+
+Useful variants:
+
+```powershell
+python scripts/prepare_data.py --root D:\datasets\triplet --seed 123 --train-parts 5 --skip-score
+python scripts/prepare_data.py --root D:\datasets\triplet --skip-train
+```
 
 ## Stronger Training
 

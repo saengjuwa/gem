@@ -77,9 +77,11 @@ def script_path(name: str) -> str:
 
 def print_training_path_examples() -> None:
     print("Path examples:")
+    print("  Label CSV: datasets\\gldv2\\train_10gb_labels.csv")
+    print("    Use this after Prepare datasets with the default dataset root.")
     print("  Label CSV: train_10gb_labels.csv")
     print("  Image root: .")
-    print("    Use . when this folder contains train_10gb\\")
+    print("    Use . when the CSV already contains absolute image paths.")
     print("  Image root: D:\\datasets\\gldv2")
     print("    Use this if images are in D:\\datasets\\gldv2\\train_10gb\\")
     print("  Checkpoint: checkpoints\\resnet50_epoch1.pt")
@@ -87,7 +89,11 @@ def print_training_path_examples() -> None:
 
 def print_validation_path_examples() -> None:
     print("Path examples:")
+    print("  Triplets: datasets\\data\\triplets.json")
+    print("    Use this after Prepare datasets with the default dataset root.")
     print("  Triplets: triplets.json")
+    print("  Validation image root: datasets\\data\\validation")
+    print("    Use this after Prepare datasets with the default dataset root.")
     print("  Validation image root: data\\validation")
     print("    Use this if images are in data\\validation\\00076\\...")
     print("  Validation image root: D:\\datasets\\validation")
@@ -99,10 +105,45 @@ def install_requirements() -> None:
     run_command([PYTHON, "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")])
 
 
+def prepare_data() -> None:
+    print("\nPrepare datasets")
+    print("This creates these paths under the selected dataset root:")
+    print("  gldv2\\train_10gb\\")
+    print("  gldv2\\train_10gb_labels.csv")
+    print("  data\\validation\\")
+    print("Examples:")
+    print("  Dataset root: datasets")
+    print("  Dataset root: D:\\datasets\\triplet")
+    dataset_root = ask_text("Dataset root", "datasets")
+    seed = ask_int("GLDv2 train part seed", 420)
+    train_parts = ask_int("Train TAR parts, 5 is about 5GB", 5)
+    download_train = ask_yes_no("Download/process GLDv2 training data", True)
+    download_score = ask_yes_no("Download/unzip scoring data", True)
+    keep_tars = ask_yes_no("Keep downloaded train TAR files", False)
+
+    args = [
+        PYTHON,
+        script_path("prepare_data.py"),
+        "--root",
+        dataset_root,
+        "--seed",
+        str(seed),
+        "--train-parts",
+        str(train_parts),
+    ]
+    if not download_train:
+        args.append("--skip-train")
+    if not download_score:
+        args.append("--skip-score")
+    if keep_tars:
+        args.append("--keep-tars")
+    run_command(args)
+
+
 def train() -> None:
     print("\nTrain")
     print_training_path_examples()
-    csv_path = ask_text("Label CSV, example train_10gb_labels.csv", "train_10gb_labels.csv")
+    csv_path = ask_text("Label CSV, example datasets\\gldv2\\train_10gb_labels.csv", "datasets\\gldv2\\train_10gb_labels.csv")
     image_root = ask_text("Image root, example . or D:\\datasets\\gldv2", ".")
     model_name = ask_text("Model name", "resnet50")
     pretrained = ask_yes_no("Use pretrained weights", True)
@@ -179,8 +220,8 @@ def predict() -> None:
     print("\nPredict triplets from a checkpoint")
     print_validation_path_examples()
     checkpoint = ask_text("Checkpoint, example checkpoints\\resnet50_epoch1.pt", "checkpoints\\resnet50_windows.pt")
-    triplets = ask_text("Triplets JSON/CSV, example triplets.json", "triplets.json")
-    image_root = ask_text("Validation image root, example data\\validation", "data\\validation")
+    triplets = ask_text("Triplets JSON/CSV, example datasets\\data\\triplets.json", "datasets\\data\\triplets.json")
+    image_root = ask_text("Validation image root, example datasets\\data\\validation", "datasets\\data\\validation")
     tta = ask_text("TTA: none, flip, or five_crop", "flip")
     batch_size = ask_int("Batch size", 64)
     output = ask_text("Output score CSV", "outputs\\triplet_scores.csv")
@@ -217,8 +258,8 @@ def build_embedding_db() -> None:
     print("\nBuild embedding DB")
     print_validation_path_examples()
     checkpoint = ask_text("Checkpoint, example checkpoints\\resnet50_epoch1.pt", "checkpoints\\resnet50_windows.pt")
-    triplets = ask_text("Triplets JSON/CSV, example triplets.json", "triplets.json")
-    image_root = ask_text("Validation image root, example data\\validation", "data\\validation")
+    triplets = ask_text("Triplets JSON/CSV, example datasets\\data\\triplets.json", "datasets\\data\\triplets.json")
+    image_root = ask_text("Validation image root, example datasets\\data\\validation", "datasets\\data\\validation")
     tta = ask_text("TTA: none, flip, or five_crop", "flip")
     batch_size = ask_int("Batch size", 64)
     output = ask_text("Output DB", "embedding_db\\validation_flip.pt")
@@ -248,8 +289,8 @@ def predict_from_db() -> None:
     print_validation_path_examples()
     print("  Embedding DB: embedding_db\\validation_flip.pt")
     embedding_db = ask_text("Embedding DB, example embedding_db\\validation_flip.pt", "embedding_db\\validation_flip.pt")
-    triplets = ask_text("Triplets JSON/CSV, example triplets.json", "triplets.json")
-    image_root = ask_text("Validation image root, example data\\validation", "data\\validation")
+    triplets = ask_text("Triplets JSON/CSV, example datasets\\data\\triplets.json", "datasets\\data\\triplets.json")
+    image_root = ask_text("Validation image root, example datasets\\data\\validation", "datasets\\data\\validation")
     output = ask_text("Output score CSV, example outputs\\db_scores.csv", "outputs\\db_scores.csv")
 
     run_command(
@@ -272,7 +313,7 @@ def mine_hard_negatives() -> None:
     print("\nMine hard negatives from GLDv2 train images")
     print_training_path_examples()
     checkpoint = ask_text("Checkpoint, example checkpoints\\resnet50_epoch1.pt", "checkpoints\\resnet50_windows.pt")
-    csv_path = ask_text("Label CSV, example train_10gb_labels.csv", "train_10gb_labels.csv")
+    csv_path = ask_text("Label CSV, example datasets\\gldv2\\train_10gb_labels.csv", "datasets\\gldv2\\train_10gb_labels.csv")
     image_root = ask_text("Image root, example . or D:\\datasets\\gldv2", ".")
     top_k = ask_int("Top K negatives per anchor", 5)
     limit = ask_text("Limit rows, empty for all", "")
@@ -300,12 +341,13 @@ def mine_hard_negatives() -> None:
 def print_menu() -> None:
     print("\nTriplet Landmark Windows Terminal")
     print("1. Install requirements")
-    print("2. Train")
-    print("3. Predict triplets")
-    print("4. Evaluate score CSV")
-    print("5. Build embedding DB")
-    print("6. Predict from embedding DB")
-    print("7. Mine hard negatives")
+    print("2. Prepare datasets")
+    print("3. Train")
+    print("4. Predict triplets")
+    print("5. Evaluate score CSV")
+    print("6. Build embedding DB")
+    print("7. Predict from embedding DB")
+    print("8. Mine hard negatives")
     print("0. Exit")
 
 
@@ -319,12 +361,13 @@ def main() -> None:
 
     actions = {
         "1": install_requirements,
-        "2": train,
-        "3": predict,
-        "4": evaluate,
-        "5": build_embedding_db,
-        "6": predict_from_db,
-        "7": mine_hard_negatives,
+        "2": prepare_data,
+        "3": train,
+        "4": predict,
+        "5": evaluate,
+        "6": build_embedding_db,
+        "7": predict_from_db,
+        "8": mine_hard_negatives,
     }
     while True:
         print_menu()
