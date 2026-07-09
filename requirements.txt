@@ -1,0 +1,8 @@
+torch
+pillow
+timm
+pandas
+datasets
+pyarrow
+tqdm
+gdown
